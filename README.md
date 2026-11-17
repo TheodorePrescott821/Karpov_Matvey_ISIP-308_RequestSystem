@@ -186,42 +186,164 @@ docker-compose up -d
 docker-compose logs app  # Просмотр ошибок
 ```
 
-## API Эндпоинты
+## 🔌 REST API
 
-### Запросы (Requests)
-- `GET /api/v1/requests` - Получить все запросы
-- `POST /api/v1/requests` - Создать новый запрос
-- `GET /api/v1/requests/{id}` - Получить запрос по ID
-- `PUT /api/v1/requests/{id}` - Обновить запрос
-- `DELETE /api/v1/requests/{id}` - Удалить запрос
+### Запуск и Доступ
 
-**Параметры фильтрации:**
-- `status` - Фильтр по статусу
-- `category` - Фильтр по категории
-- `priority` - Фильтр по приоритету
-- `search` - Поиск по описанию
-- `limit` - Лимит результатов (по умолчанию 10)
-- `offset` - Смещение для пагинации
+API автоматически запускается при команде `docker-compose up -d --build`.
 
-### Пример запроса
+**API Адрес:** `http://localhost:8000`
+
+**Интерактивная документация (выбери один из вариантов):**
+- **Swagger UI:** http://localhost:8000/docs
+- **ReDoc:** http://localhost:8000/redoc
+- **OpenAPI Schema:** http://localhost:8000/openapi.json
+
+> 💡 **Совет:** Используйте Swagger UI (`/docs`) для интерактивного тестирования API - можно отправлять запросы прямо из браузера
+
+### 📋 Основные Endpoints
+
+#### Health Check (Проверка здоровья)
+
+```
+GET /health
+```
+- Проверка статуса приложения (используется Docker и Kubernetes)
+- **Ответ:** `{"status": "healthy"}` (HTTP 200)
+
+```
+GET /ready
+```
+- Проверка готовности приложения
+- **Ответ:** `{"ready": true}` (HTTP 200)
+
+#### Управление Запросами (Requests)
+
+```
+GET /api/requests
+```
+- **Описание:** Получить список всех запросов с фильтрацией, поиском и сортировкой
+- **Параметры запроса:**
+  - `status` - Фильтр по статусу (New, In Progress, Under Review, Approved, Rejected, Completed)
+  - `priority` - Фильтр по приоритету (Low, Medium, High, Critical)
+  - `user_id` - Фильтр по ID пользователя (заявитель)
+  - `category_id` - Фильтр по ID категории
+  - `account_name` - Фильтр по имени учетной записи
+  - `search` - Полнотекстовый поиск по описанию и имени пользователя
+  - `search_description` - Поиск только в описании
+  - `sort_by` - Сортировка по полю (created_at, id, priority, status, account_name)
+  - `sort_order` - Порядок сортировки (asc, desc)
+  - `limit` - Количество результатов (1-100, по умолчанию 10)
+  - `offset` - Смещение для пагинации (по умолчанию 0)
+  - `page` - Номер страницы (альтернатива offset)
+
+**Ответ:**
+```json
+{
+  "requests": [
+    {
+      "request_id": 1,
+      "request_number": "REQ-001",
+      "description": "Установка ПО",
+      "applicant_user_id": 1,
+      "user_name": "Иван Петров",
+      "category_id": 2,
+      "category_name": "IT",
+      "priority": "High",
+      "status": "In Progress",
+      "registered_at": "2026-11-17T10:30:00"
+    }
+  ],
+  "total_count": 42,
+  "filtered_count": 15,
+  "returned_count": 10,
+  "limit": 10,
+  "offset": 0,
+  "has_next": true,
+  "has_previous": false
+}
+```
+
+### 📝 Примеры Запросов
+
+#### 1️⃣ Получить все запросы (базовый запрос)
 
 ```bash
-# Получить все открытые запросы с высоким приоритетом
-curl "http://localhost:8000/api/v1/requests?status=open&priority=high"
-
-# Поиск запроса
-curl "http://localhost:8000/api/v1/requests?search=installation"
-
-# Создать новый запрос
-curl -X POST http://localhost:8000/api/v1/requests \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Установка ПО",
-    "description": "Требуется установить Office 365",
-    "category": "IT",
-    "priority": "high"
-  }'
+curl "http://localhost:8000/api/requests"
 ```
+
+#### 2️⃣ Получить запросы со статусом "In Progress"
+
+```bash
+curl "http://localhost:8000/api/requests?status=In%20Progress"
+```
+
+#### 3️⃣ Поиск по описанию (полнотекстовый поиск)
+
+```bash
+curl "http://localhost:8000/api/requests?search=laptop"
+```
+
+#### 4️⃣ Фильтрация: высокий приоритет и "In Progress", сортировка по новизне
+
+```bash
+curl "http://localhost:8000/api/requests?priority=High&status=In%20Progress&sort_by=created_at&sort_order=desc&limit=20"
+```
+
+#### 5️⃣ Пагинация: вторая страница с 20 элементами
+
+```bash
+curl "http://localhost:8000/api/requests?limit=20&page=2"
+```
+
+#### 6️⃣ Поиск по ID пользователя (заявители)
+
+```bash
+curl "http://localhost:8000/api/requests?user_id=1"
+```
+
+#### 7️⃣ Поиск только в описании
+
+```bash
+curl "http://localhost:8000/api/requests?search_description=equipment"
+```
+
+#### 8️⃣ Фильтрация по имени пользователя
+
+```bash
+curl "http://localhost:8000/api/requests?account_name=john"
+```
+
+### 🧪 Тестирование в Swagger UI
+
+1. Откройте http://localhost:8000/docs
+2. Нажмите на **GET /api/requests**
+3. Нажмите **"Try it out"**
+4. Добавьте параметры (опционально)
+5. Нажмите **"Execute"**
+
+### ⚠️ Значения параметров
+
+**Status (Статус):**
+- `New` - Новая заявка
+- `In Progress` - В процессе выполнения
+- `Under Review` - На рассмотрении
+- `Approved` - Одобрена
+- `Rejected` - Отклонена
+- `Completed` - Завершена
+
+**Priority (Приоритет):**
+- `Low` - Низкий
+- `Medium` - Средний
+- `High` - Высокий
+- `Critical` - Критический
+
+### 🔄 Коды ответов
+
+- **200 OK** - Успешный запрос
+- **400 Bad Request** - Неверные параметры
+- **422 Unprocessable Entity** - Неверные значения параметров
+- **503 Service Unavailable** - Сервис недоступен
 
 ## Структура проекта
 
