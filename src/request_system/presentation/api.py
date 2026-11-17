@@ -1,19 +1,33 @@
 """FastAPI REST API for the request system."""
 
+from datetime import datetime, timezone
 from typing import Callable
 
-from fastapi import FastAPI, Query
+from fastapi import Depends, FastAPI, Query, HTTPException, status
 from fastapi.responses import JSONResponse
 
 from request_system.config import settings
 from request_system.application.ports.persistence import UnitOfWork
 from request_system.application.services.request_service import RequestService
+from request_system.application.services.auth_service import AuthService
 from request_system.application.services.health_service import health_service
+from request_system.presentation.dependencies import get_current_user
 from request_system.presentation.models import (
     HealthCheckResponse,
     ListRequestsQueryParams,
     ListRequestsResponse,
     RequestItemResponse,
+    LoginRequest,
+    LoginResponse,
+    CreateRequestRequest,
+    CreateRequestResponse,
+    UpdateStatusRequest,
+    AssignExecutorRequest,
+    SubmitResultRequest,
+    DecisionRequest,
+    AddCommentRequest,
+    NotificationResponse,
+    NotificationsListResponse,
 )
 
 
@@ -29,6 +43,87 @@ def create_app(unit_of_work_factory: Callable[[], UnitOfWork]) -> FastAPI:
     )
 
     service = RequestService(unit_of_work_factory)
+
+    # =========================================================================
+    # Authentication Endpoints
+    # =========================================================================
+
+    @app.post(
+        "/api/auth/login",
+        response_model=LoginResponse,
+        status_code=200,
+        tags=["Authentication"],
+        summary="User login",
+        description="Authenticate user with email and password. Returns JWT token valid for 30 minutes.",
+        responses={
+            200: {"description": "Login successful, JWT token returned"},
+            401: {"description": "Invalid credentials"}
+        }
+    )
+    async def login(request: LoginRequest):
+        """
+        User login endpoint.
+
+        Authenticates a user with email and password, returning a JWT token.
+        
+        Args:
+            request: LoginRequest with email and password
+            
+        Returns:
+            LoginResponse with JWT token and user info
+            
+        Raises:
+            HTTPException (401): If email or password is incorrect
+        """
+        # For now, we'll use demo credentials
+        # In production, query the database with UserRepository
+        demo_users = {
+            "applicant@test.com": {
+                "user_id": 1,
+                "password_hash": AuthService.hash_password("password123"),
+                "name": "Test Applicant",
+                "roles": ["applicant"]
+            },
+            "operator@test.com": {
+                "user_id": 2,
+                "password_hash": AuthService.hash_password("password123"),
+                "name": "Test Operator",
+                "roles": ["operator"]
+            },
+            "executor@test.com": {
+                "user_id": 3,
+                "password_hash": AuthService.hash_password("password123"),
+                "name": "Test Executor",
+                "roles": ["executor"]
+            },
+            "reviewer@test.com": {
+                "user_id": 4,
+                "password_hash": AuthService.hash_password("password123"),
+                "name": "Test Reviewer",
+                "roles": ["reviewer"]
+            }
+        }
+
+        user_data = demo_users.get(request.email)
+        if not user_data or not AuthService.verify_password(request.password, user_data["password_hash"]):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or password"
+            )
+
+        token = AuthService.create_token(
+            user_id=user_data["user_id"],
+            email=request.email,
+            roles=user_data["roles"]
+        )
+
+        return LoginResponse(
+            access_token=token,
+            token_type="bearer",
+            user_id=user_data["user_id"],
+            email=request.email,
+            roles=user_data["roles"]
+        )
 
     # =========================================================================
     # Health Check Endpoints
@@ -324,5 +419,177 @@ def create_app(unit_of_work_factory: Callable[[], UnitOfWork]) -> FastAPI:
     async def health_check():
         """Health check endpoint."""
         return JSONResponse({"status": "ok"})
+
+    # =========================================================================
+    # Workflow API Endpoints (Phase 1)
+    # =========================================================================
+
+    @app.post(
+        "/api/requests",
+        response_model=CreateRequestResponse,
+        status_code=201,
+        tags=["Workflow"],
+        summary="Create new request",
+        description="Create a new request (Applicant role only)"
+    )
+    async def create_request(
+        request_data: CreateRequestRequest,
+        current_user: type = Depends(get_current_user)
+    ):
+        """Create a new request (Applicant only)."""
+        if not current_user or "applicant" not in current_user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only applicants can create requests"
+            )
+        # TODO: Implement database storage
+        return CreateRequestResponse(
+            request_id=100,
+            request_number="REQ-001",
+            status="новая",
+            created_at=datetime.now(timezone.utc)
+        )
+
+    @app.put(
+        "/api/requests/{request_id}/status",
+        status_code=200,
+        tags=["Workflow"],
+        summary="Update request status",
+        description="Change request status (Operator role only)"
+    )
+    async def update_status(
+        request_id: int,
+        update_data: UpdateStatusRequest,
+        current_user: type = Depends(get_current_user)
+    ):
+        """Update request status (Operator only)."""
+        if not current_user or "operator" not in current_user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only operators can update status"
+            )
+        return JSONResponse({
+            "request_id": request_id,
+            "new_status": update_data.new_status,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        })
+
+    @app.put(
+        "/api/requests/{request_id}/assign",
+        status_code=200,
+        tags=["Workflow"],
+        summary="Assign executor",
+        description="Assign executor to request (Operator role only)"
+    )
+    async def assign_executor(
+        request_id: int,
+        assign_data: AssignExecutorRequest,
+        current_user: type = Depends(get_current_user)
+    ):
+        """Assign executor (Operator only)."""
+        if not current_user or "operator" not in current_user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only operators can assign executors"
+            )
+        return JSONResponse({
+            "request_id": request_id,
+            "executor_id": assign_data.executor_id,
+            "assigned_at": datetime.now(timezone.utc).isoformat()
+        })
+
+    @app.post(
+        "/api/requests/{request_id}/results",
+        status_code=200,
+        tags=["Workflow"],
+        summary="Submit result",
+        description="Submit execution result (Executor role only)"
+    )
+    async def submit_result(
+        request_id: int,
+        result_data: SubmitResultRequest,
+        current_user: type = Depends(get_current_user)
+    ):
+        """Submit result (Executor only)."""
+        if not current_user or "executor" not in current_user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only executors can submit results"
+            )
+        return JSONResponse({
+            "request_id": request_id,
+            "result": result_data.description,
+            "submitted_at": datetime.now(timezone.utc).isoformat()
+        })
+
+    @app.post(
+        "/api/requests/{request_id}/decision",
+        status_code=200,
+        tags=["Workflow"],
+        summary="Make acceptance decision",
+        description="Accept or reject result (Reviewer role only)"
+    )
+    async def make_decision(
+        request_id: int,
+        decision_data: DecisionRequest,
+        current_user: type = Depends(get_current_user)
+    ):
+        """Make acceptance decision (Reviewer only)."""
+        if not current_user or "reviewer" not in current_user.roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only reviewers can make decisions"
+            )
+        return JSONResponse({
+            "request_id": request_id,
+            "outcome": decision_data.outcome,
+            "comment": decision_data.comment,
+            "decided_at": datetime.now(timezone.utc).isoformat()
+        })
+
+    @app.post(
+        "/api/requests/{request_id}/comments",
+        status_code=201,
+        tags=["Workflow"],
+        summary="Add comment",
+        description="Add comment to request (Any authenticated user)"
+    )
+    async def add_comment(
+        request_id: int,
+        comment_data: AddCommentRequest,
+        current_user: type = Depends(get_current_user)
+    ):
+        """Add comment (Any authenticated user)."""
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required"
+            )
+        return JSONResponse({
+            "request_id": request_id,
+            "text": comment_data.text,
+            "author_id": current_user.user_id,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+
+    @app.get(
+        "/api/notifications",
+        response_model=NotificationsListResponse,
+        status_code=200,
+        tags=["Notifications"],
+        summary="Get notifications",
+        description="Get unread notifications for current user"
+    )
+    async def get_notifications(current_user: type = Depends(get_current_user)):
+        """Get notifications (Any authenticated user)."""
+        if not current_user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required"
+            )
+        return NotificationsListResponse(
+            notifications=[],
+            unread_count=0
+        )
 
     return app

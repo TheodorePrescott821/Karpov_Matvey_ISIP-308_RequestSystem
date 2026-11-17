@@ -3,7 +3,45 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
+
+
+# ============================================================================
+# Authentication Models
+# ============================================================================
+
+class LoginRequest(BaseModel):
+    """Login request with email and password."""
+    email: EmailStr = Field(..., description="User email address")
+    password: str = Field(..., min_length=1, description="User password")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "user@example.com",
+                "password": "password123"
+            }
+        }
+
+
+class LoginResponse(BaseModel):
+    """Successful login response with JWT token."""
+    access_token: str = Field(..., description="JWT access token")
+    token_type: str = Field("bearer", description="Token type (always 'bearer')")
+    user_id: int = Field(..., description="User ID")
+    email: str = Field(..., description="User email")
+    roles: list[str] = Field(..., description="User roles")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                "token_type": "bearer",
+                "user_id": 1,
+                "email": "user@example.com",
+                "roles": ["applicant"]
+            }
+        }
 
 
 class HealthCheckResponse(BaseModel):
@@ -238,3 +276,159 @@ class ListRequestsResponse(BaseModel):
                 "has_previous": False,
             }
         }
+
+
+# ============================================================================
+# Notification Models
+# ============================================================================
+
+class NotificationResponse(BaseModel):
+    """Notification response model."""
+    notification_id: int = Field(..., description="Notification ID")
+    user_id: int = Field(..., description="User ID")
+    event_type: str = Field(..., description="Event type (e.g., 'request_created', 'assigned', 'result_submitted')")
+    request_id: int | None = Field(..., description="Related request ID (if applicable)")
+    created_at: datetime = Field(..., description="When notification was created")
+    read_at: datetime | None = Field(None, description="When notification was read (if read)")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "notification_id": 1,
+                "user_id": 2,
+                "event_type": "request_created",
+                "request_id": 100,
+                "created_at": "2026-11-17T16:09:24Z",
+                "read_at": None
+            }
+        }
+
+
+class NotificationsListResponse(BaseModel):
+    """List of notifications."""
+    notifications: list[NotificationResponse] = Field(..., description="Unread notifications")
+    unread_count: int = Field(..., description="Total number of unread notifications")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "notifications": [
+                    {
+                        "notification_id": 1,
+                        "user_id": 2,
+                        "event_type": "request_created",
+                        "request_id": 100,
+                        "created_at": "2026-11-17T16:09:24Z",
+                        "read_at": None
+                    }
+                ],
+                "unread_count": 1
+            }
+        }
+
+
+# ============================================================================
+# Workflow API Request/Response Models
+# ============================================================================
+
+class CreateRequestRequest(BaseModel):
+    """Create a new request."""
+    description: str = Field(..., min_length=1, max_length=5000, description="Request description")
+    category_id: int | None = Field(None, description="Category ID")
+    priority: str | None = Field(None, description="Priority level")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "description": "Need to fix printer in office",
+                "category_id": 1,
+                "priority": "High"
+            }
+        }
+
+
+class CreateRequestResponse(BaseModel):
+    """Response after creating a request."""
+    request_id: int = Field(..., description="Created request ID")
+    request_number: str = Field(..., description="Request number")
+    status: str = Field(..., description="Current status")
+    created_at: datetime = Field(..., description="When request was created")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "request_id": 100,
+                "request_number": "REQ-001",
+                "status": "новая",
+                "created_at": "2026-11-17T16:09:24Z"
+            }
+        }
+
+
+class UpdateStatusRequest(BaseModel):
+    """Update request status."""
+    new_status: str = Field(..., description="New status")
+    explanation: str | None = Field(None, description="Reason for status change")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "new_status": "назначена",
+                "explanation": "Assigned to executor"
+            }
+        }
+
+
+class AssignExecutorRequest(BaseModel):
+    """Assign executor to request."""
+    executor_id: int = Field(..., description="Executor user ID")
+    reason: str | None = Field(None, description="Reason for assignment")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "executor_id": 3,
+                "reason": "Best available executor"
+            }
+        }
+
+
+class SubmitResultRequest(BaseModel):
+    """Submit result for a request."""
+    description: str = Field(..., min_length=1, description="Result description")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "description": "Printer fixed and tested successfully"
+            }
+        }
+
+
+class DecisionRequest(BaseModel):
+    """Make acceptance decision on result."""
+    outcome: str = Field(..., description="accepted or rework")
+    comment: str | None = Field(None, description="Comment on decision")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "outcome": "accepted",
+                "comment": "Work completed satisfactorily"
+            }
+        }
+
+
+class AddCommentRequest(BaseModel):
+    """Add comment to request."""
+    text: str = Field(..., min_length=1, max_length=2000, description="Comment text")
+    is_service: bool = Field(False, description="Is this a service comment?")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "text": "Printer is now working correctly",
+                "is_service": False
+            }
+        }
+

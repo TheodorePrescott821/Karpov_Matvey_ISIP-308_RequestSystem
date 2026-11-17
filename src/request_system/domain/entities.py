@@ -16,6 +16,7 @@ class User:
     account: str
     name: str
     contacts: str | None = None
+    password_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,3 +111,14 @@ class AcceptanceDecision:
     outcome: AcceptanceOutcome
     comment: str | None
     decided_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class Notification:
+    notification_id: int | None
+    user_id: int
+    event_type: str
+    request_id: int | None
+    created_at: datetime
+    read_at: datetime | None = None
+

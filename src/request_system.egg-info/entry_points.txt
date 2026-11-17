@@ -1,0 +1,2 @@
+[console_scripts]
+request-system = request_system.__main__:main

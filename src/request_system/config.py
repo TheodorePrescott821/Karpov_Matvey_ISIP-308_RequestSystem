@@ -128,6 +128,26 @@ class Settings(BaseSettings):
         description="Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL"
     )
 
+    # ============================================================================
+    # JWT Authentication
+    # ============================================================================
+    jwt_secret: str = Field(
+        "your-secret-key-change-in-production",
+        alias="JWT_SECRET",
+        description="Secret key for JWT token signing"
+    )
+    jwt_algorithm: str = Field(
+        "HS256",
+        alias="JWT_ALGORITHM",
+        description="Algorithm for JWT token signing"
+    )
+    jwt_expiration_minutes: int = Field(
+        30,
+        alias="JWT_EXPIRATION_MINUTES",
+        ge=1,
+        description="JWT token expiration time in minutes"
+    )
+
     class Config:
         """Pydantic configuration for settings loading."""
         env_file = ".env"
